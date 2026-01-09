@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # Web Application (React + Vite)
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+        - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+        - VITE_AI_SERVICE_URL=http://localhost:8000
+    ports:
+      - "80:80"
+    depends_on:
+      ai-service:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - smarttrade-network
+
+  # AI Service (FastAPI + Python)
+  ai-service:
+    build:
+      context: ./apps/ai-service
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SUPABASE_URL=${VITE_SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_SERVICE_KEY}
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - smarttrade-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  smarttrade-network:
+    driver: bridge
+
+volumes:
+  # Add persistent volumes if needed
+  # postgres_data:
+  # redis_data:

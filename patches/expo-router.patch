@@ -1,0 +1,58 @@
+diff --git a/build/fork/extractPathFromURL.js b/build/fork/extractPathFromURL.js
+index bc327c11b9126a93e738059c9c986680ab42d311..5728b295209ea1ec3781fe1d39b4673daee12340 100644
+--- a/build/fork/extractPathFromURL.js
++++ b/build/fork/extractPathFromURL.js
+@@ -69,12 +69,24 @@ function fromDeepLink(url) {
+     catch {
+         return url;
+     }
++    // PATCH: Safe access to searchParams for Hermes compatibility
++    const getSearchParam = (key) => {
++        if (res.searchParams && typeof res.searchParams.get === 'function') {
++            return res.searchParams.get(key);
++        }
++        // Fallback: parse from res.search
++        if (res.search) {
++            const match = res.search.match(new RegExp('[?&]' + key + '=([^&]*)'));
++            return match ? decodeURIComponent(match[1]) : null;
++        }
++        return null;
++    };
+     if (isExpoDevelopmentClient(res)) {
+-        if (!res.searchParams.get('url')) {
++        const urlParam = getSearchParam('url');
++        if (!urlParam) {
+             return '';
+         }
+-        const incomingUrl = res.searchParams.get('url');
+-        return extractExactPathFromURL(decodeURI(incomingUrl));
++        return extractExactPathFromURL(decodeURI(urlParam));
+     }
+     let results = '';
+     if (res.host) {
+@@ -83,10 +95,21 @@ function fromDeepLink(url) {
+     if (res.pathname) {
+         results += res.pathname;
+     }
+-    const qs = !res.search
+-        ? ''
+-        : // @ts-ignore: `entries` is not on `URLSearchParams` in some typechecks.
+-            [...res.searchParams.entries()].map(([k, v]) => `${k}=${decodeURIComponent(v)}`).join('&');
++    // PATCH: Safe access to searchParams.entries() for Hermes compatibility
++    let qs = '';
++    if (res.search) {
++        if (res.searchParams && typeof res.searchParams.entries === 'function') {
++            try {
++                qs = [...res.searchParams.entries()].map(([k, v]) => `${k}=${decodeURIComponent(v)}`).join('&');
++            } catch (e) {
++                // Fallback: use search string directly
++                qs = res.search.replace(/^\?/, '');
++            }
++        } else {
++            // Fallback: use search string directly
++            qs = res.search.replace(/^\?/, '');
++        }
++    }
+     if (qs) {
+         results += '?' + qs;
+     }

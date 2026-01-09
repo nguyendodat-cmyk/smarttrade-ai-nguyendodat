@@ -1,0 +1,44 @@
+version: '3.8'
+
+# Development Docker Compose - with hot reload
+
+services:
+  # Web Application (Development with Vite)
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+    environment:
+      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+      - VITE_AI_SERVICE_URL=http://localhost:8000
+    depends_on:
+      - ai-service
+    networks:
+      - smarttrade-network
+
+  # AI Service (Development with auto-reload)
+  ai-service:
+    build:
+      context: ./apps/ai-service
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps/ai-service:/app
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    env_file:
+      - .env
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - smarttrade-network
+
+networks:
+  smarttrade-network:
+    driver: bridge

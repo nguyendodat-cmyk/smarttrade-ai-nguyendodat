@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+  - packages/*
+patchedDependencies:
+  expo-router: patches/expo-router.patch
+  expo-linking: patches/expo-linking.patch
+  expo-asset: patches/expo-asset.patch

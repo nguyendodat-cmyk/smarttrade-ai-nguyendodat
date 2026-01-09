@@ -1,0 +1,31 @@
+diff --git a/build/createURL.js b/build/createURL.js
+index 5bcc1997b1dfc85337f8d01dd722689bc769dfc2..60b059caeb2509abdce755f8787e03b24fcf702f 100644
+--- a/build/createURL.js
++++ b/build/createURL.js
+@@ -125,9 +125,23 @@ export function parse(url) {
+     let scheme = null;
+     try {
+         const parsed = new URL(url);
+-        parsed.searchParams.forEach((value, key) => {
+-            queryParams[key] = decodeURIComponent(value);
+-        });
++        // PATCH: Safe access to searchParams for Hermes compatibility
++        if (parsed.searchParams && typeof parsed.searchParams.forEach === 'function') {
++            parsed.searchParams.forEach((value, key) => {
++                queryParams[key] = decodeURIComponent(value);
++            });
++        } else if (parsed.search) {
++            // Fallback: parse query string manually
++            const search = parsed.search.replace(/^\?/, '');
++            if (search) {
++                search.split('&').forEach((pair) => {
++                    const [key, value] = pair.split('=');
++                    if (key) {
++                        queryParams[decodeURIComponent(key)] = decodeURIComponent(value || '');
++                    }
++                });
++            }
++        }
+         path = parsed.pathname || null;
+         hostname = parsed.hostname || null;
+         scheme = parsed.protocol || null;

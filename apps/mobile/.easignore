@@ -1,0 +1,36 @@
+# Ignore pnpm files at ALL levels - use npm only for EAS builds
+pnpm-lock.yaml
+pnpm-workspace.yaml
+.pnpmfile.cjs
+**/pnpm-lock.yaml
+**/pnpm-workspace.yaml
+**/.pnpmfile.cjs
+../**/pnpm-lock.yaml
+../**/pnpm-workspace.yaml
+
+# Ignore root node_modules (use mobile's own)
+/node_modules
+../node_modules
+
+# Ignore common dev files
+.git
+.idea
+.vscode
+*.log
+**/.DS_Store
+
+# Ignore other apps in monorepo
+apps/web
+apps/ai-service
+../apps/web
+../apps/ai-service
+
+# Ignore docs and scripts
+docs
+scripts
+supabase
+packages
+../docs
+../scripts
+../supabase
+../packages

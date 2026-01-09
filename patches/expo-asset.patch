@@ -1,0 +1,25 @@
+diff --git a/build/AssetSources.js b/build/AssetSources.js
+index 7557af61699e679982c06ddcc6ba21342f342688..6a50a6f1f7e73aa21b1a5bd4de2dd128277b265a 100644
+--- a/build/AssetSources.js
++++ b/build/AssetSources.js
+@@ -55,8 +55,18 @@ export function selectAssetSource(meta) {
+                 : null;
+     if (devServerUrl) {
+         const baseUrl = new URL(meta.httpServerLocation + suffix, devServerUrl);
+-        baseUrl.searchParams.set('platform', Platform.OS);
+-        baseUrl.searchParams.set('hash', meta.hash);
++        // PATCH: Safe access to searchParams for Hermes compatibility
++        if (baseUrl.searchParams && typeof baseUrl.searchParams.set === 'function') {
++            baseUrl.searchParams.set('platform', Platform.OS);
++            baseUrl.searchParams.set('hash', meta.hash);
++        } else {
++            // Fallback: append query string manually
++            const separator = baseUrl.href.includes('?') ? '&' : '?';
++            return {
++                uri: baseUrl.href + separator + 'platform=' + encodeURIComponent(Platform.OS) + '&hash=' + encodeURIComponent(meta.hash),
++                hash,
++            };
++        }
+         return {
+             uri: baseUrl.href,
+             hash,
