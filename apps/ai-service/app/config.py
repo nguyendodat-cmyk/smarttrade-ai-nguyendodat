@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     # Redis (optional for caching)
     REDIS_URL: str = "redis://localhost:6379"
 
+    # SSI FastConnect
+    SSI_CONSUMER_ID: str = ""
+    SSI_CONSUMER_SECRET: str = ""
+    SSI_BASE_URL: str = "https://fc-data.ssi.com.vn"
+    SSI_STREAMING_URL: str = "wss://fc-tradingapi.ssi.com.vn/realtime"
+
     # Rate limiting
     RATE_LIMIT_FREE: int = 3  # queries per day for free users
     RATE_LIMIT_PREMIUM: int = 100  # queries per day for premium users

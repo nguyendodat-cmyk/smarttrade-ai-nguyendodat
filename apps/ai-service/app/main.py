@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.routers import ai_router, hybrid_ai_router, analytics_router, research_router, alerts_router
+from app.routers.health import router as health_router
 
 
 @asynccontextmanager
@@ -32,6 +33,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(health_router, prefix=settings.API_V1_PREFIX)  # Health checks
 app.include_router(ai_router, prefix=settings.API_V1_PREFIX)
 app.include_router(hybrid_ai_router, prefix=settings.API_V1_PREFIX)  # RAG-enhanced AI
 app.include_router(analytics_router, prefix=settings.API_V1_PREFIX)  # Analytics
