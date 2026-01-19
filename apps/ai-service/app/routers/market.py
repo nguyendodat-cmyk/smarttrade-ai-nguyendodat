@@ -216,33 +216,26 @@ async def get_intraday_ohlc(
 # Real-time Quotes
 # ========================================
 
-@router.post("/quotes")
-async def get_multiple_quotes(request: MultiQuoteRequest):
-    """
-    Get real-time quotes for multiple stocks at once
+# NOTE: SSI REST API does not have a proper real-time quotes endpoint
+# The /api/v2/Market/SecuritiesDetails endpoint returns ALL 3529 securities
+# regardless of symbols filter, making it impractical for quote snapshots.
+#
+# For PHASE 1 (REST API only):
+# - Use /ohlc/daily to get latest closing prices
+# - Use /ohlc/intraday to get recent 1-minute bars
+#
+# For PHASE 2 (Streaming):
+# - Real-time quotes will be provided via IDS WebSocket streaming
+# - Subscribe to specific symbols for live price updates
 
-    Request body:
-        {
-            "symbols": ["VIC", "VNM", "HPG"]
-        }
-
-    Returns:
-        Current quotes including last price, bid/ask, volume, etc.
-    """
-    ssi_client = get_ssi_client()
-
-    if not ssi_client.is_configured():
-        raise HTTPException(status_code=503, detail="SSI API not configured")
-
-    try:
-        # Convert to uppercase
-        symbols = [s.upper() for s in request.symbols]
-
-        result = await ssi_client.get_securities_details_multi(symbols)
-        return result
-    except Exception as e:
-        logger.error(f"Error fetching quotes: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch quotes: {str(e)}")
+# Temporarily disabled - use PHASE 2 streaming for real-time quotes
+# @router.post("/quotes")
+# async def get_multiple_quotes(request: MultiQuoteRequest):
+#     """DEPRECATED: Use PHASE 2 streaming for real-time quotes"""
+#     raise HTTPException(
+#         status_code=501,
+#         detail="Real-time quotes via REST not available. Use /ohlc/daily or /ohlc/intraday for historical data, or PHASE 2 streaming for live quotes."
+#     )
 
 
 # ========================================

@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     SSI_BASE_URL: str = "https://fc-data.ssi.com.vn"
     SSI_STREAMING_URL: str = "wss://fc-tradingapi.ssi.com.vn/realtime"
 
+    # SSI IDS Streaming (optional, for PHASE 2)
+    SSI_PUBLIC_KEY: str = ""
+    SSI_PRIVATE_KEY: str = ""
+
     # Rate limiting
     RATE_LIMIT_FREE: int = 3  # queries per day for free users
     RATE_LIMIT_PREMIUM: int = 100  # queries per day for premium users
@@ -39,6 +43,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Allow extra fields in .env without crashing
 
     def get_cors_origins(self) -> list[str]:
         """Parse CORS_ORIGINS string into list."""
