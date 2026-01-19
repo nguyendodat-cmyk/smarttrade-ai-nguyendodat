@@ -5,6 +5,10 @@ from contextlib import asynccontextmanager
 from app.config import settings
 from app.routers import ai_router, hybrid_ai_router, analytics_router, research_router, alerts_router
 
+# ✅ Add these 2 imports
+from app.routers.health import router as health_router
+from app.routers.market import router as market_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,6 +38,11 @@ app.add_middleware(
 # Include routers
 app.include_router(ai_router, prefix=settings.API_V1_PREFIX)
 app.include_router(hybrid_ai_router, prefix=settings.API_V1_PREFIX)  # RAG-enhanced AI
+
+# ✅ Add these 2 routers
+app.include_router(health_router, prefix=settings.API_V1_PREFIX)  # Health checks
+app.include_router(market_router, prefix=settings.API_V1_PREFIX)  # Market data (SSI)
+
 app.include_router(analytics_router, prefix=settings.API_V1_PREFIX)  # Analytics
 app.include_router(research_router, prefix=settings.API_V1_PREFIX)  # AI Research Agent
 app.include_router(alerts_router, prefix=settings.API_V1_PREFIX)  # Smart Alerts
@@ -49,6 +58,7 @@ async def root():
     }
 
 
+# (Giữ nguyên endpoint health cũ này cũng được)
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
