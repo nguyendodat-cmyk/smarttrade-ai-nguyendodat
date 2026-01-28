@@ -30,9 +30,37 @@ class Settings(BaseSettings):
     RATE_LIMIT_FREE: int = 3  # queries per day for free users
     RATE_LIMIT_PREMIUM: int = 100  # queries per day for premium users
 
+    # SSI FastConnect
+    SSI_BASE_URL: str = "https://fc-data.ssi.com.vn"
+    SSI_CONSUMER_ID: str = ""
+    SSI_CONSUMER_SECRET: str = ""
+
+    # Polling Service (Sprint A.1)
+    POLLING_ENABLED: bool = True
+    POLLING_INTERVAL_DEFAULT: int = 60
+    POLLING_INTERVAL_WATCHLIST: int = 30
+    POLLING_INTERVAL_HOT: int = 15
+    POLLING_BATCH_SIZE: int = 20
+
+    # State Manager (Sprint A.2)
+    STATE_ROLLING_WINDOW_1M: int = 60
+    STATE_ROLLING_WINDOW_DAILY: int = 50
+    STATE_STALE_THRESHOLD: int = 300
+
+    # Insight Engine (Sprint A.3)
+    INSIGHT_ENGINE_ENABLED: bool = True
+    INSIGHT_DEDUP_WINDOW: int = 300
+    INSIGHT_LOG_FILE: str = "logs/insights.jsonl"
+
+    # Alert Evaluator (Sprint B.1)
+    ALERT_COOLDOWN_DEFAULT: int = 300
+    ALERT_COOLDOWN_HIGH: int = 600
+    ALERT_MAX_PER_USER_PER_DAY: int = 50
+
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"
 
     def get_cors_origins(self) -> list[str]:
         """Parse CORS_ORIGINS string into list."""
