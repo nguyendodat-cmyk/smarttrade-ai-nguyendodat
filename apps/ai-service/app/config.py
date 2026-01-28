@@ -40,6 +40,29 @@ class Settings(BaseSettings):
     RATE_LIMIT_FREE: int = 3  # queries per day for free users
     RATE_LIMIT_PREMIUM: int = 100  # queries per day for premium users
 
+    # Market Polling (Insight Engine)
+    POLLING_ENABLED: bool = True
+    POLLING_INTERVAL_DEFAULT: int = 60  # seconds - default tier
+    POLLING_INTERVAL_WATCHLIST: int = 30  # seconds - watchlist tier
+    POLLING_INTERVAL_HOT: int = 15  # seconds - hot symbols (explicit user watch)
+    POLLING_BATCH_SIZE: int = 20  # symbols per batch
+    POLLING_MAX_SYMBOLS: int = 100  # max total symbols to poll
+
+    # Market State Manager
+    STATE_ROLLING_WINDOW_1M: int = 60  # bars (1 hour of 1-min data)
+    STATE_ROLLING_WINDOW_DAILY: int = 50  # bars (2 months of daily data)
+    STATE_STALE_THRESHOLD: int = 300  # seconds (5 min) - mark data as stale
+
+    # Insight Engine
+    INSIGHT_ENGINE_ENABLED: bool = True
+    INSIGHT_LOG_TO_DB: bool = True
+    INSIGHT_LOG_FILE: str = "logs/insights.jsonl"
+
+    # Alert Evaluator
+    ALERT_COOLDOWN_DEFAULT: int = 300  # 5 minutes between same alerts
+    ALERT_COOLDOWN_HIGH_SEVERITY: int = 600  # 10 minutes for high severity
+    ALERT_MAX_PER_USER_PER_DAY: int = 50  # spam protection
+
     class Config:
         env_file = ".env"
         case_sensitive = True
