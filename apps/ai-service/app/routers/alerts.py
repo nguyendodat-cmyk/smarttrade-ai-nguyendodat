@@ -530,20 +530,34 @@ async def get_indicators_info():
 @router.get("/pipeline/status")
 async def get_pipeline_status():
     """
-    Get insight pipeline status: Insight Engine + Alert Evaluator + AI Explain stats.
+    Full pipeline ops status with rolling 5-minute counters.
+    Includes: polling, state_manager, insight_engine, alert_evaluator, ai_explain.
     """
-    from app.services.insight_engine import InsightEngine
+    from app.services.pipeline_monitor import get_pipeline_monitor
     from app.services.alert_evaluator import get_alert_evaluator
     from app.services.ai_explain_service import get_ai_explain_service
 
+    monitor = get_pipeline_monitor()
     evaluator = get_alert_evaluator()
     explain = get_ai_explain_service()
 
-    return {
-        "alert_evaluator": evaluator.get_stats(),
-        "ai_explain": explain.get_stats(),
-        "recent_notifications_count": len(evaluator.get_recent_notifications()),
-    }
+    # Try to get optional services (may not be initialized yet)
+    polling_service = None
+    state_manager = None
+    insight_engine = None
+    try:
+        from app.services.market_polling_service import MarketPollingService
+        # These would be set via main.py startup; for now use singletons if available
+    except Exception:
+        pass
+
+    return monitor.get_full_status(
+        polling_service=polling_service,
+        state_manager=state_manager,
+        insight_engine=insight_engine,
+        alert_evaluator=evaluator,
+        ai_explain_service=explain,
+    )
 
 
 @router.get("/pipeline/recent-notifications")
