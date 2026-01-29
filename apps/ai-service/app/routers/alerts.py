@@ -538,25 +538,12 @@ async def get_pipeline_status():
     from app.services.ai_explain_service import get_ai_explain_service
 
     monitor = get_pipeline_monitor()
-    evaluator = get_alert_evaluator()
-    explain = get_ai_explain_service()
 
-    # Try to get optional services (may not be initialized yet)
-    polling_service = None
-    state_manager = None
-    insight_engine = None
-    try:
-        from app.services.market_polling_service import MarketPollingService
-        # These would be set via main.py startup; for now use singletons if available
-    except Exception:
-        pass
-
+    # Services are registered via monitor.register_services() at app startup.
+    # Pass singletons that are always available as fallback.
     return monitor.get_full_status(
-        polling_service=polling_service,
-        state_manager=state_manager,
-        insight_engine=insight_engine,
-        alert_evaluator=evaluator,
-        ai_explain_service=explain,
+        alert_evaluator=get_alert_evaluator(),
+        ai_explain_service=get_ai_explain_service(),
     )
 
 

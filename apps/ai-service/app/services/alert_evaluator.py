@@ -8,7 +8,10 @@ Flow:
 """
 
 import asyncio
+import json
 import logging
+import time
+from pathlib import Path
 from typing import Callable, Coroutine, Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -41,12 +44,18 @@ class AlertEvaluator:
         cooldown_default: int = 300,      # 5 minutes
         cooldown_high: int = 600,          # 10 minutes for high severity
         max_per_user_per_day: int = 50,
+        warmup_seconds: int = 180,         # 3 minutes global warm-up
         supabase_client=None,
     ):
         self.cooldown_default = cooldown_default
         self.cooldown_high = cooldown_high
         self.max_per_user_per_day = max_per_user_per_day
+        self.warmup_seconds = warmup_seconds
         self.supabase = supabase_client
+        self._cooldown_file = Path("data/cooldown_cache.json")
+
+        # Warm-up: suppress alerts for N seconds after startup
+        self._started_at = time.monotonic()
 
         # In-memory state
         # (user_id, symbol, insight_code) -> last_sent_at
@@ -64,6 +73,7 @@ class AlertEvaluator:
             "matches": 0,
             "cooldown_skipped": 0,
             "daily_limit_skipped": 0,
+            "warmup_suppressed": 0,
             "notifications_sent": 0,
         }
 
@@ -74,6 +84,15 @@ class AlertEvaluator:
         """
         self._stats["evaluations"] += 1
         self._reset_daily_if_new_day()
+
+        # Global warm-up check
+        if self._in_warmup():
+            self._stats["warmup_suppressed"] += 1
+            logger.debug(
+                "Alert suppressed (warmup): symbol=%s code=%s | suppressed_reason=system_warmup",
+                event.symbol, event.insight_code,
+            )
+            return []
 
         # Get matching alerts
         alerts = await self._get_matching_alerts(event)
@@ -96,6 +115,11 @@ class AlertEvaluator:
             # Check daily limit
             if self._daily_counts[alert.user_id] >= self.max_per_user_per_day:
                 self._stats["daily_limit_skipped"] += 1
+                self._record_daily_cap_hit()
+                logger.warning(
+                    "Daily alert cap hit: user=%s count=%d cap=%d",
+                    alert.user_id, self._daily_counts[alert.user_id], self.max_per_user_per_day,
+                )
                 continue
 
             # Generate notification (Vietnamese explanation via AI Explain Service)
@@ -118,6 +142,7 @@ class AlertEvaluator:
             self._daily_counts[alert.user_id] += 1
             self._history.append(notification)
             self._stats["notifications_sent"] += 1
+            self._record_alert_to_monitor()
 
             # Record to DB
             await self._record_history(notification)
@@ -179,6 +204,28 @@ class AlertEvaluator:
     def _set_cooldown(self, user_id: str, event: InsightEvent):
         key = (user_id, event.symbol, event.insight_code)
         self._cooldown_cache[key] = datetime.utcnow()
+
+    def _in_warmup(self) -> bool:
+        """Check if system is still in post-startup warm-up period."""
+        return (time.monotonic() - self._started_at) < self.warmup_seconds
+
+    def warmup_remaining_seconds(self) -> float:
+        remaining = self.warmup_seconds - (time.monotonic() - self._started_at)
+        return max(0.0, round(remaining, 1))
+
+    def _record_alert_to_monitor(self):
+        try:
+            from app.services.pipeline_monitor import get_pipeline_monitor
+            get_pipeline_monitor().record_alert()
+        except Exception:
+            pass
+
+    def _record_daily_cap_hit(self):
+        try:
+            from app.services.pipeline_monitor import get_pipeline_monitor
+            get_pipeline_monitor().record_daily_cap_hit()
+        except Exception:
+            pass
 
     def _reset_daily_if_new_day(self):
         today = datetime.utcnow().strftime("%Y-%m-%d")
@@ -253,7 +300,10 @@ class AlertEvaluator:
     # ============================================
 
     def get_stats(self) -> Dict:
-        return dict(self._stats)
+        stats = dict(self._stats)
+        stats["in_warmup"] = self._in_warmup()
+        stats["warmup_remaining_s"] = self.warmup_remaining_seconds()
+        return stats
 
     def get_recent_notifications(self, limit: int = 20) -> List[AlertNotification]:
         """Get recent notifications from in-memory history."""
@@ -262,6 +312,44 @@ class AlertEvaluator:
     def clear_cooldowns(self):
         """Clear all cooldowns (for testing)."""
         self._cooldown_cache.clear()
+
+    # ============================================
+    # Cooldown Persistence (best-effort)
+    # ============================================
+
+    def persist_cooldowns(self):
+        """Save cooldown cache to JSON file (called periodically)."""
+        try:
+            self._cooldown_file.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                f"{uid}|{sym}|{code}": ts.isoformat() + "Z"
+                for (uid, sym, code), ts in self._cooldown_cache.items()
+            }
+            self._cooldown_file.write_text(json.dumps(data, indent=2))
+            logger.debug("Persisted %d cooldown entries", len(data))
+        except Exception as e:
+            logger.warning("Failed to persist cooldowns: %s", e)
+
+    def restore_cooldowns(self):
+        """Load cooldown cache from JSON file (called at startup)."""
+        if not self._cooldown_file.exists():
+            return
+        try:
+            data = json.loads(self._cooldown_file.read_text())
+            now = datetime.utcnow()
+            max_age = max(self.cooldown_default, self.cooldown_high)
+            restored = 0
+            for key_str, ts_str in data.items():
+                parts = key_str.split("|", 2)
+                if len(parts) != 3:
+                    continue
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).replace(tzinfo=None)
+                if (now - ts).total_seconds() < max_age:
+                    self._cooldown_cache[tuple(parts)] = ts
+                    restored += 1
+            logger.info("Restored %d cooldown entries (of %d total)", restored, len(data))
+        except Exception as e:
+            logger.warning("Failed to restore cooldowns: %s", e)
 
 
 # ============================================
@@ -276,6 +364,7 @@ def get_alert_evaluator(
     cooldown_default: int = 300,
     cooldown_high: int = 600,
     max_per_user_per_day: int = 50,
+    warmup_seconds: int = 180,
 ) -> AlertEvaluator:
     """Get or create AlertEvaluator singleton."""
     global _evaluator_instance
@@ -284,6 +373,7 @@ def get_alert_evaluator(
             cooldown_default=cooldown_default,
             cooldown_high=cooldown_high,
             max_per_user_per_day=max_per_user_per_day,
+            warmup_seconds=warmup_seconds,
             supabase_client=supabase_client,
         )
     return _evaluator_instance

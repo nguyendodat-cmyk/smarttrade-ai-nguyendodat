@@ -102,6 +102,7 @@ class InsightEngine:
                             self._stats["insights_by_code"].get(code, 0) + 1
                         )
                         await self._log_insight(event)
+                        self._record_to_monitor()
                         await self._notify_subscribers(event)
 
         return insights
@@ -143,6 +144,14 @@ class InsightEngine:
     # Logging & Notification
     # ============================================
 
+    def _record_to_monitor(self):
+        """Record insight to PipelineMonitor rolling counter."""
+        try:
+            from app.services.pipeline_monitor import get_pipeline_monitor
+            get_pipeline_monitor().record_insight()
+        except Exception:
+            pass  # Monitor not available yet
+
     async def _log_insight(self, event: InsightEvent):
         if self.log_file:
             try:
@@ -167,6 +176,8 @@ class InsightEngine:
         bars_1m: List[PriceBar], bars_daily: List[PriceBar]
     ) -> List[InsightEvent]:
         """PA01: Strong bullish candle (body >70% of range)."""
+        if len(bars_1m) < 5:
+            return []
         events = []
         for bar in bars_1m[-5:]:  # Check last 5 bars
             if bar.range == 0:
@@ -191,6 +202,8 @@ class InsightEngine:
         bars_1m: List[PriceBar], bars_daily: List[PriceBar]
     ) -> List[InsightEvent]:
         """PA02: Long upper wick (rejection >50% of range)."""
+        if len(bars_1m) < 5:
+            return []
         events = []
         for bar in bars_1m[-5:]:
             if bar.range == 0:

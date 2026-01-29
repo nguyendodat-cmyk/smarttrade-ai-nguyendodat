@@ -60,6 +60,26 @@ class PipelineMonitor:
     def record_daily_cap_hit(self):
         self.daily_cap_hits_counter.record()
 
+    def register_services(
+        self,
+        polling_service=None,
+        state_manager=None,
+        insight_engine=None,
+        alert_evaluator=None,
+        ai_explain_service=None,
+    ):
+        """Register service references for status reporting."""
+        if polling_service:
+            self._polling_service = polling_service
+        if state_manager:
+            self._state_manager = state_manager
+        if insight_engine:
+            self._insight_engine = insight_engine
+        if alert_evaluator:
+            self._alert_evaluator = alert_evaluator
+        if ai_explain_service:
+            self._ai_explain_service = ai_explain_service
+
     def get_full_status(
         self,
         polling_service=None,
@@ -69,6 +89,12 @@ class PipelineMonitor:
         ai_explain_service=None,
     ) -> Dict:
         """Build the complete pipeline status response."""
+        # Fall back to registered services if not passed explicitly
+        polling_service = polling_service or getattr(self, "_polling_service", None)
+        state_manager = state_manager or getattr(self, "_state_manager", None)
+        insight_engine = insight_engine or getattr(self, "_insight_engine", None)
+        alert_evaluator = alert_evaluator or getattr(self, "_alert_evaluator", None)
+        ai_explain_service = ai_explain_service or getattr(self, "_ai_explain_service", None)
 
         # Polling
         polling_status = {"available": False}

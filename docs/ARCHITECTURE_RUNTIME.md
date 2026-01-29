@@ -110,6 +110,26 @@
 
 Tất cả đều là **trade-off có ý thức** cho v1. Sẽ fix khi có user feedback thực tế.
 
+## Deployment: Single Worker Requirement
+
+**Production v1 PHẢI chạy single worker** cho pipeline process (polling + insight + alert).
+
+Lý do: Tất cả state (deque, cooldown cache, dedup cache, rolling counters) đều in-memory, không share giữa workers.
+
+```bash
+# Đúng: 1 worker cho pipeline
+uvicorn app.main:app --workers 1
+
+# SAI: nhiều workers sẽ gây split state, duplicate alerts
+uvicorn app.main:app --workers 4  # KHÔNG dùng cho v1
+```
+
+Nếu cần scale API read-only (GET endpoints) riêng, tách thành:
+- 1 process "pipeline worker" (polling + insight + alert)
+- N process "api-only" (chỉ serve GET, không chạy pipeline)
+
+Multi-worker requires Redis shared state — chưa implement trong v1.
+
 ## Config Reference
 
 ```env
