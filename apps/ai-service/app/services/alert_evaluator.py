@@ -19,49 +19,9 @@ from app.models.insight_models import (
     InsightSeverity,
     UserAlert,
 )
+from app.services.ai_explain_service import get_ai_explain_service
 
 logger = logging.getLogger(__name__)
-
-# Vietnamese explanation templates per insight_code
-VIETNAMESE_TEMPLATES: Dict[str, str] = {
-    "PA01": "Nến tăng mạnh với thân nến chiếm {body_percent:.0%} biên độ, giá đóng cửa tăng {close_change_pct:+.1f}% so với mở cửa. Tín hiệu tăng giá trong ngắn hạn.",
-    "PA02": "Nến có bóng trên dài ({upper_wick_percent:.0%} biên độ), bị từ chối tại mức {high:,.0f}. Lực bán mạnh ở vùng giá cao.",
-    "PA03": "Gap {direction} {gap_percent:+.1f}% so với phiên trước (đóng cửa {prev_close:,.0f} → mở cửa {today_open:,.0f}). Tín hiệu biến động mạnh.",
-    "PA04": "Thất bại breakout: chạm đỉnh 20 phiên ({high_20d:,.0f}) nhưng đóng cửa giảm tại {today_close:,.0f}. Cảnh báo đảo chiều.",
-    "VA01": "Breakout với khối lượng cao gấp {volume_ratio:.1f} lần trung bình, giá thay đổi {price_change_pct:+.1f}%. Tín hiệu xác nhận xu hướng.",
-    "VA02": "Giá tăng {price_change_pct:+.1f}% nhưng khối lượng chỉ đạt {volume_ratio:.0%} trung bình. Phân kỳ giá-khối lượng, tín hiệu yếu.",
-    "VA03": "Khối lượng đạt đỉnh ({volume:,}), nằm trong top 5% của 20 phiên gần nhất. Có thể là tín hiệu đảo chiều hoặc bùng nổ.",
-    "TM02": "{cross_type_vi}: MA20 ({ma20:,.0f}) cắt {cross_direction} MA50 ({ma50:,.0f}). Tín hiệu {signal_vi} trung hạn.",
-    "TM04": "RSI đạt {rsi14:.1f} (quá mua, >70). Cổ phiếu có thể đã tăng quá nhanh, cân nhắc chốt lời.",
-    "TM05": "RSI xuống {rsi14:.1f} (quá bán, <30). Cổ phiếu có thể đã giảm quá sâu, cân nhắc mua vào.",
-}
-
-
-def generate_vietnamese_explanation(event: InsightEvent) -> str:
-    """Generate Vietnamese explanation from InsightEvent using templates."""
-    template = VIETNAMESE_TEMPLATES.get(event.insight_code)
-    if not template:
-        return event.raw_explanation
-
-    signals = dict(event.signals)
-
-    # Enrich signals for TM02
-    if event.insight_code == "TM02":
-        cross_type = signals.get("cross_type", "golden")
-        signals["cross_type_vi"] = "Golden Cross" if cross_type == "golden" else "Death Cross"
-        signals["cross_direction"] = "lên trên" if cross_type == "golden" else "xuống dưới"
-        signals["signal_vi"] = "tăng giá" if cross_type == "golden" else "giảm giá"
-
-    # Enrich for PA03
-    if event.insight_code == "PA03":
-        gap_pct = signals.get("gap_percent", 0)
-        signals["direction"] = "tăng" if gap_pct > 0 else "giảm"
-
-    try:
-        return template.format(**signals)
-    except (KeyError, ValueError) as e:
-        logger.warning("Template format error for %s: %s", event.insight_code, e)
-        return event.raw_explanation
 
 
 class AlertEvaluator:
@@ -138,8 +98,9 @@ class AlertEvaluator:
                 self._stats["daily_limit_skipped"] += 1
                 continue
 
-            # Generate notification
-            message = generate_vietnamese_explanation(event)
+            # Generate notification (Vietnamese explanation via AI Explain Service)
+            explain_service = get_ai_explain_service()
+            message = await explain_service.explain(event)
             notification = AlertNotification(
                 user_id=alert.user_id,
                 alert_id=alert.id,

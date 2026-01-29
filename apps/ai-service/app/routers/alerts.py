@@ -524,6 +524,53 @@ async def get_indicators_info():
 
 
 # ============================================
+# Insight Pipeline Status Endpoints
+# ============================================
+
+@router.get("/pipeline/status")
+async def get_pipeline_status():
+    """
+    Get insight pipeline status: Insight Engine + Alert Evaluator + AI Explain stats.
+    """
+    from app.services.insight_engine import InsightEngine
+    from app.services.alert_evaluator import get_alert_evaluator
+    from app.services.ai_explain_service import get_ai_explain_service
+
+    evaluator = get_alert_evaluator()
+    explain = get_ai_explain_service()
+
+    return {
+        "alert_evaluator": evaluator.get_stats(),
+        "ai_explain": explain.get_stats(),
+        "recent_notifications_count": len(evaluator.get_recent_notifications()),
+    }
+
+
+@router.get("/pipeline/recent-notifications")
+async def get_recent_notifications(limit: int = Query(20, ge=1, le=100)):
+    """
+    Get recent alert notifications (in-memory).
+    """
+    from app.services.alert_evaluator import get_alert_evaluator
+
+    evaluator = get_alert_evaluator()
+    notifications = evaluator.get_recent_notifications(limit=limit)
+
+    return [
+        {
+            "id": n.id,
+            "user_id": n.user_id,
+            "symbol": n.symbol,
+            "insight_code": n.insight_code,
+            "severity": n.severity.value,
+            "message": n.message,
+            "sent_at": n.sent_at.isoformat(),
+        }
+        for n in notifications
+    ]
+
+
+# ============================================
 # Helper Functions
 # ============================================
 
