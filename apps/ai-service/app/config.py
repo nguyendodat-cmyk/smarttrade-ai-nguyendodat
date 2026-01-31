@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     ALERT_COOLDOWN_DEFAULT: int = 300
     ALERT_COOLDOWN_HIGH: int = 600
     ALERT_MAX_PER_USER_PER_DAY: int = 50
+    ALERT_WARMUP_SECONDS: int = 180
+    ALERT_COOLDOWN_CACHE_PATH: str = "data/cooldown_cache.json"
+
+    # AI Explain (Sprint B.2)
+    AI_EXPLAIN_MODE: str = "template_only"  # "template_only" | "template_llm"
 
     class Config:
         env_file = ".env"

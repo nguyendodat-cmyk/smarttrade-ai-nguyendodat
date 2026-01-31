@@ -524,6 +524,54 @@ async def get_indicators_info():
 
 
 # ============================================
+# Insight Pipeline Status Endpoints
+# ============================================
+
+@router.get("/pipeline/status")
+async def get_pipeline_status():
+    """
+    Full pipeline ops status with rolling 5-minute counters.
+    Includes: polling, state_manager, insight_engine, alert_evaluator, ai_explain.
+    """
+    from app.services.pipeline_monitor import get_pipeline_monitor
+    from app.services.alert_evaluator import get_alert_evaluator
+    from app.services.ai_explain_service import get_ai_explain_service
+
+    monitor = get_pipeline_monitor()
+
+    # Services are registered via monitor.register_services() at app startup.
+    # Pass singletons that are always available as fallback.
+    return monitor.get_full_status(
+        alert_evaluator=get_alert_evaluator(),
+        ai_explain_service=get_ai_explain_service(),
+    )
+
+
+@router.get("/pipeline/recent-notifications")
+async def get_recent_notifications(limit: int = Query(20, ge=1, le=100)):
+    """
+    Get recent alert notifications (in-memory).
+    """
+    from app.services.alert_evaluator import get_alert_evaluator
+
+    evaluator = get_alert_evaluator()
+    notifications = evaluator.get_recent_notifications(limit=limit)
+
+    return [
+        {
+            "id": n.id,
+            "user_id": n.user_id,
+            "symbol": n.symbol,
+            "insight_code": n.insight_code,
+            "severity": n.severity.value,
+            "message": n.message,
+            "sent_at": n.sent_at.isoformat(),
+        }
+        for n in notifications
+    ]
+
+
+# ============================================
 # Helper Functions
 # ============================================
 

@@ -43,3 +43,5 @@ coverage
 
 # Misc
 *.local
+logs/
+data/

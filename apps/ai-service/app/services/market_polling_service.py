@@ -169,7 +169,7 @@ class MarketPollingService:
 
         self._stats["polls_total"] += 1
         self._stats["polls_success"] += 1
-        self._stats["last_poll_at"] = datetime.utcnow().isoformat()
+        self._stats["last_poll_at"] = datetime.utcnow().isoformat() + "Z"
 
         if all_bars and self._on_bars_update:
             try:

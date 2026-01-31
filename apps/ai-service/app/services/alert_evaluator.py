@@ -8,7 +8,10 @@ Flow:
 """
 
 import asyncio
+import json
 import logging
+import time
+from pathlib import Path
 from typing import Callable, Coroutine, Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -19,49 +22,9 @@ from app.models.insight_models import (
     InsightSeverity,
     UserAlert,
 )
+from app.services.ai_explain_service import get_ai_explain_service
 
 logger = logging.getLogger(__name__)
-
-# Vietnamese explanation templates per insight_code
-VIETNAMESE_TEMPLATES: Dict[str, str] = {
-    "PA01": "Nến tăng mạnh với thân nến chiếm {body_percent:.0%} biên độ, giá đóng cửa tăng {close_change_pct:+.1f}% so với mở cửa. Tín hiệu tăng giá trong ngắn hạn.",
-    "PA02": "Nến có bóng trên dài ({upper_wick_percent:.0%} biên độ), bị từ chối tại mức {high:,.0f}. Lực bán mạnh ở vùng giá cao.",
-    "PA03": "Gap {direction} {gap_percent:+.1f}% so với phiên trước (đóng cửa {prev_close:,.0f} → mở cửa {today_open:,.0f}). Tín hiệu biến động mạnh.",
-    "PA04": "Thất bại breakout: chạm đỉnh 20 phiên ({high_20d:,.0f}) nhưng đóng cửa giảm tại {today_close:,.0f}. Cảnh báo đảo chiều.",
-    "VA01": "Breakout với khối lượng cao gấp {volume_ratio:.1f} lần trung bình, giá thay đổi {price_change_pct:+.1f}%. Tín hiệu xác nhận xu hướng.",
-    "VA02": "Giá tăng {price_change_pct:+.1f}% nhưng khối lượng chỉ đạt {volume_ratio:.0%} trung bình. Phân kỳ giá-khối lượng, tín hiệu yếu.",
-    "VA03": "Khối lượng đạt đỉnh ({volume:,}), nằm trong top 5% của 20 phiên gần nhất. Có thể là tín hiệu đảo chiều hoặc bùng nổ.",
-    "TM02": "{cross_type_vi}: MA20 ({ma20:,.0f}) cắt {cross_direction} MA50 ({ma50:,.0f}). Tín hiệu {signal_vi} trung hạn.",
-    "TM04": "RSI đạt {rsi14:.1f} (quá mua, >70). Cổ phiếu có thể đã tăng quá nhanh, cân nhắc chốt lời.",
-    "TM05": "RSI xuống {rsi14:.1f} (quá bán, <30). Cổ phiếu có thể đã giảm quá sâu, cân nhắc mua vào.",
-}
-
-
-def generate_vietnamese_explanation(event: InsightEvent) -> str:
-    """Generate Vietnamese explanation from InsightEvent using templates."""
-    template = VIETNAMESE_TEMPLATES.get(event.insight_code)
-    if not template:
-        return event.raw_explanation
-
-    signals = dict(event.signals)
-
-    # Enrich signals for TM02
-    if event.insight_code == "TM02":
-        cross_type = signals.get("cross_type", "golden")
-        signals["cross_type_vi"] = "Golden Cross" if cross_type == "golden" else "Death Cross"
-        signals["cross_direction"] = "lên trên" if cross_type == "golden" else "xuống dưới"
-        signals["signal_vi"] = "tăng giá" if cross_type == "golden" else "giảm giá"
-
-    # Enrich for PA03
-    if event.insight_code == "PA03":
-        gap_pct = signals.get("gap_percent", 0)
-        signals["direction"] = "tăng" if gap_pct > 0 else "giảm"
-
-    try:
-        return template.format(**signals)
-    except (KeyError, ValueError) as e:
-        logger.warning("Template format error for %s: %s", event.insight_code, e)
-        return event.raw_explanation
 
 
 class AlertEvaluator:
@@ -81,12 +44,19 @@ class AlertEvaluator:
         cooldown_default: int = 300,      # 5 minutes
         cooldown_high: int = 600,          # 10 minutes for high severity
         max_per_user_per_day: int = 50,
+        warmup_seconds: int = 180,         # 3 minutes global warm-up
+        cooldown_cache_path: str = "data/cooldown_cache.json",
         supabase_client=None,
     ):
         self.cooldown_default = cooldown_default
         self.cooldown_high = cooldown_high
         self.max_per_user_per_day = max_per_user_per_day
+        self.warmup_seconds = warmup_seconds
         self.supabase = supabase_client
+        self._cooldown_file = Path(cooldown_cache_path)
+
+        # Warm-up: suppress alerts for N seconds after startup
+        self._started_at = time.monotonic()
 
         # In-memory state
         # (user_id, symbol, insight_code) -> last_sent_at
@@ -104,6 +74,7 @@ class AlertEvaluator:
             "matches": 0,
             "cooldown_skipped": 0,
             "daily_limit_skipped": 0,
+            "warmup_suppressed": 0,
             "notifications_sent": 0,
         }
 
@@ -114,6 +85,15 @@ class AlertEvaluator:
         """
         self._stats["evaluations"] += 1
         self._reset_daily_if_new_day()
+
+        # Global warm-up check
+        if self._in_warmup():
+            self._stats["warmup_suppressed"] += 1
+            logger.debug(
+                "Alert suppressed (warmup): symbol=%s code=%s | suppressed_reason=system_warmup",
+                event.symbol, event.insight_code,
+            )
+            return []
 
         # Get matching alerts
         alerts = await self._get_matching_alerts(event)
@@ -136,10 +116,16 @@ class AlertEvaluator:
             # Check daily limit
             if self._daily_counts[alert.user_id] >= self.max_per_user_per_day:
                 self._stats["daily_limit_skipped"] += 1
+                self._record_daily_cap_hit()
+                logger.warning(
+                    "Daily alert cap hit: user=%s count=%d cap=%d",
+                    alert.user_id, self._daily_counts[alert.user_id], self.max_per_user_per_day,
+                )
                 continue
 
-            # Generate notification
-            message = generate_vietnamese_explanation(event)
+            # Generate notification (Vietnamese explanation via AI Explain Service)
+            explain_service = get_ai_explain_service()
+            message = await explain_service.explain(event)
             notification = AlertNotification(
                 user_id=alert.user_id,
                 alert_id=alert.id,
@@ -157,6 +143,7 @@ class AlertEvaluator:
             self._daily_counts[alert.user_id] += 1
             self._history.append(notification)
             self._stats["notifications_sent"] += 1
+            self._record_alert_to_monitor()
 
             # Record to DB
             await self._record_history(notification)
@@ -218,6 +205,34 @@ class AlertEvaluator:
     def _set_cooldown(self, user_id: str, event: InsightEvent):
         key = (user_id, event.symbol, event.insight_code)
         self._cooldown_cache[key] = datetime.utcnow()
+
+    def _in_warmup(self) -> bool:
+        """Check if system is still in post-startup warm-up period."""
+        return (time.monotonic() - self._started_at) < self.warmup_seconds
+
+    def warmup_remaining_seconds(self) -> float:
+        remaining = self.warmup_seconds - (time.monotonic() - self._started_at)
+        return max(0.0, round(remaining, 1))
+
+    _monitor_error_logged = False
+
+    def _record_alert_to_monitor(self):
+        try:
+            from app.services.pipeline_monitor import get_pipeline_monitor
+            get_pipeline_monitor().record_alert()
+        except Exception as e:
+            if not AlertEvaluator._monitor_error_logged:
+                logger.debug("PipelineMonitor not available for alert recording: %s", e)
+                AlertEvaluator._monitor_error_logged = True
+
+    def _record_daily_cap_hit(self):
+        try:
+            from app.services.pipeline_monitor import get_pipeline_monitor
+            get_pipeline_monitor().record_daily_cap_hit()
+        except Exception as e:
+            if not AlertEvaluator._monitor_error_logged:
+                logger.debug("PipelineMonitor not available for cap hit recording: %s", e)
+                AlertEvaluator._monitor_error_logged = True
 
     def _reset_daily_if_new_day(self):
         today = datetime.utcnow().strftime("%Y-%m-%d")
@@ -292,7 +307,10 @@ class AlertEvaluator:
     # ============================================
 
     def get_stats(self) -> Dict:
-        return dict(self._stats)
+        stats = dict(self._stats)
+        stats["in_warmup"] = self._in_warmup()
+        stats["warmup_remaining_s"] = self.warmup_remaining_seconds()
+        return stats
 
     def get_recent_notifications(self, limit: int = 20) -> List[AlertNotification]:
         """Get recent notifications from in-memory history."""
@@ -301,6 +319,44 @@ class AlertEvaluator:
     def clear_cooldowns(self):
         """Clear all cooldowns (for testing)."""
         self._cooldown_cache.clear()
+
+    # ============================================
+    # Cooldown Persistence (best-effort)
+    # ============================================
+
+    def persist_cooldowns(self):
+        """Save cooldown cache to JSON file as epoch seconds (called at shutdown)."""
+        try:
+            self._cooldown_file.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                f"{uid}|{sym}|{code}": ts.timestamp()
+                for (uid, sym, code), ts in self._cooldown_cache.items()
+            }
+            self._cooldown_file.write_text(json.dumps(data, indent=2))
+            logger.debug("Persisted %d cooldown entries", len(data))
+        except Exception as e:
+            logger.warning("Failed to persist cooldowns: %s", e)
+
+    def restore_cooldowns(self):
+        """Load cooldown cache from JSON file (called at startup)."""
+        if not self._cooldown_file.exists():
+            return
+        try:
+            data = json.loads(self._cooldown_file.read_text())
+            now_epoch = datetime.utcnow().timestamp()
+            max_age = max(self.cooldown_default, self.cooldown_high)
+            restored = 0
+            for key_str, epoch_val in data.items():
+                parts = key_str.split("|", 2)
+                if len(parts) != 3:
+                    continue
+                epoch = float(epoch_val)
+                if (now_epoch - epoch) < max_age:
+                    self._cooldown_cache[tuple(parts)] = datetime.utcfromtimestamp(epoch)
+                    restored += 1
+            logger.info("Restored %d cooldown entries (of %d total)", restored, len(data))
+        except Exception as e:
+            logger.warning("Failed to restore cooldowns: %s", e)
 
 
 # ============================================
@@ -315,6 +371,8 @@ def get_alert_evaluator(
     cooldown_default: int = 300,
     cooldown_high: int = 600,
     max_per_user_per_day: int = 50,
+    warmup_seconds: int = 180,
+    cooldown_cache_path: str = "data/cooldown_cache.json",
 ) -> AlertEvaluator:
     """Get or create AlertEvaluator singleton."""
     global _evaluator_instance
@@ -323,6 +381,8 @@ def get_alert_evaluator(
             cooldown_default=cooldown_default,
             cooldown_high=cooldown_high,
             max_per_user_per_day=max_per_user_per_day,
+            warmup_seconds=warmup_seconds,
+            cooldown_cache_path=cooldown_cache_path,
             supabase_client=supabase_client,
         )
     return _evaluator_instance
