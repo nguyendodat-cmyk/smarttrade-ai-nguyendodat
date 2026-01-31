@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.config import settings
-from app.routers import ai_router, hybrid_ai_router, analytics_router, research_router, alerts_router
+from app.routers import ai_router, hybrid_ai_router, analytics_router, research_router, alerts_router, debug_router
 from app.services.market_state_manager import MarketStateManager
 from app.services.market_polling_service import MarketPollingService
 from app.services.insight_engine import InsightEngine
@@ -106,6 +106,7 @@ app.include_router(hybrid_ai_router, prefix=settings.API_V1_PREFIX)  # RAG-enhan
 app.include_router(analytics_router, prefix=settings.API_V1_PREFIX)  # Analytics
 app.include_router(research_router, prefix=settings.API_V1_PREFIX)  # AI Research Agent
 app.include_router(alerts_router, prefix=settings.API_V1_PREFIX)  # Smart Alerts
+app.include_router(debug_router, prefix=settings.API_V1_PREFIX)  # Debug (Ops only)
 
 
 @app.get("/")
