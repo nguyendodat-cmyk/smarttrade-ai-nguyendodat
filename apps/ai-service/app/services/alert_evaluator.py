@@ -45,6 +45,7 @@ class AlertEvaluator:
         cooldown_high: int = 600,          # 10 minutes for high severity
         max_per_user_per_day: int = 50,
         warmup_seconds: int = 180,         # 3 minutes global warm-up
+        cooldown_cache_path: str = "data/cooldown_cache.json",
         supabase_client=None,
     ):
         self.cooldown_default = cooldown_default
@@ -52,7 +53,7 @@ class AlertEvaluator:
         self.max_per_user_per_day = max_per_user_per_day
         self.warmup_seconds = warmup_seconds
         self.supabase = supabase_client
-        self._cooldown_file = Path("data/cooldown_cache.json")
+        self._cooldown_file = Path(cooldown_cache_path)
 
         # Warm-up: suppress alerts for N seconds after startup
         self._started_at = time.monotonic()
@@ -213,19 +214,25 @@ class AlertEvaluator:
         remaining = self.warmup_seconds - (time.monotonic() - self._started_at)
         return max(0.0, round(remaining, 1))
 
+    _monitor_error_logged = False
+
     def _record_alert_to_monitor(self):
         try:
             from app.services.pipeline_monitor import get_pipeline_monitor
             get_pipeline_monitor().record_alert()
-        except Exception:
-            pass
+        except Exception as e:
+            if not AlertEvaluator._monitor_error_logged:
+                logger.debug("PipelineMonitor not available for alert recording: %s", e)
+                AlertEvaluator._monitor_error_logged = True
 
     def _record_daily_cap_hit(self):
         try:
             from app.services.pipeline_monitor import get_pipeline_monitor
             get_pipeline_monitor().record_daily_cap_hit()
-        except Exception:
-            pass
+        except Exception as e:
+            if not AlertEvaluator._monitor_error_logged:
+                logger.debug("PipelineMonitor not available for cap hit recording: %s", e)
+                AlertEvaluator._monitor_error_logged = True
 
     def _reset_daily_if_new_day(self):
         today = datetime.utcnow().strftime("%Y-%m-%d")
@@ -318,11 +325,11 @@ class AlertEvaluator:
     # ============================================
 
     def persist_cooldowns(self):
-        """Save cooldown cache to JSON file (called periodically)."""
+        """Save cooldown cache to JSON file as epoch seconds (called at shutdown)."""
         try:
             self._cooldown_file.parent.mkdir(parents=True, exist_ok=True)
             data = {
-                f"{uid}|{sym}|{code}": ts.isoformat() + "Z"
+                f"{uid}|{sym}|{code}": ts.timestamp()
                 for (uid, sym, code), ts in self._cooldown_cache.items()
             }
             self._cooldown_file.write_text(json.dumps(data, indent=2))
@@ -336,16 +343,16 @@ class AlertEvaluator:
             return
         try:
             data = json.loads(self._cooldown_file.read_text())
-            now = datetime.utcnow()
+            now_epoch = datetime.utcnow().timestamp()
             max_age = max(self.cooldown_default, self.cooldown_high)
             restored = 0
-            for key_str, ts_str in data.items():
+            for key_str, epoch_val in data.items():
                 parts = key_str.split("|", 2)
                 if len(parts) != 3:
                     continue
-                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).replace(tzinfo=None)
-                if (now - ts).total_seconds() < max_age:
-                    self._cooldown_cache[tuple(parts)] = ts
+                epoch = float(epoch_val)
+                if (now_epoch - epoch) < max_age:
+                    self._cooldown_cache[tuple(parts)] = datetime.utcfromtimestamp(epoch)
                     restored += 1
             logger.info("Restored %d cooldown entries (of %d total)", restored, len(data))
         except Exception as e:
@@ -365,6 +372,7 @@ def get_alert_evaluator(
     cooldown_high: int = 600,
     max_per_user_per_day: int = 50,
     warmup_seconds: int = 180,
+    cooldown_cache_path: str = "data/cooldown_cache.json",
 ) -> AlertEvaluator:
     """Get or create AlertEvaluator singleton."""
     global _evaluator_instance
@@ -374,6 +382,7 @@ def get_alert_evaluator(
             cooldown_high=cooldown_high,
             max_per_user_per_day=max_per_user_per_day,
             warmup_seconds=warmup_seconds,
+            cooldown_cache_path=cooldown_cache_path,
             supabase_client=supabase_client,
         )
     return _evaluator_instance

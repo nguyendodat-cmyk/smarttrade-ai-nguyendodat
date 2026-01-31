@@ -38,6 +38,8 @@ alert_evaluator = get_alert_evaluator(
     cooldown_default=settings.ALERT_COOLDOWN_DEFAULT,
     cooldown_high=settings.ALERT_COOLDOWN_HIGH,
     max_per_user_per_day=settings.ALERT_MAX_PER_USER_PER_DAY,
+    warmup_seconds=settings.ALERT_WARMUP_SECONDS,
+    cooldown_cache_path=settings.ALERT_COOLDOWN_CACHE_PATH,
 )
 
 ai_explain = get_ai_explain_service()

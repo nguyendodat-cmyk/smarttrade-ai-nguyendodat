@@ -144,13 +144,17 @@ class InsightEngine:
     # Logging & Notification
     # ============================================
 
+    _monitor_error_logged = False
+
     def _record_to_monitor(self):
         """Record insight to PipelineMonitor rolling counter."""
         try:
             from app.services.pipeline_monitor import get_pipeline_monitor
             get_pipeline_monitor().record_insight()
-        except Exception:
-            pass  # Monitor not available yet
+        except Exception as e:
+            if not InsightEngine._monitor_error_logged:
+                logger.debug("PipelineMonitor not available for insight recording: %s", e)
+                InsightEngine._monitor_error_logged = True
 
     async def _log_insight(self, event: InsightEvent):
         if self.log_file:
