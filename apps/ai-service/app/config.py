@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     ALERT_WARMUP_SECONDS: int = 180
     ALERT_COOLDOWN_CACHE_PATH: str = "data/cooldown_cache.json"
 
+    # AI Explain (Sprint B.2)
+    AI_EXPLAIN_MODE: str = "template_only"  # "template_only" | "template_llm"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

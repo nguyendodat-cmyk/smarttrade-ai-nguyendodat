@@ -176,6 +176,55 @@ smarttrade-ai/
 
 ---
 
+## Insight Pipeline (AI Service)
+
+The AI service runs an **insight-driven pipeline** that detects technical signals from Vietnamese stock market data:
+
+```
+SSI API → Polling (60s) → State Manager → Insight Engine (10 detectors) → Alert Evaluator → AI Explain (Vietnamese)
+```
+
+### Running the AI Service
+
+```bash
+cd apps/ai-service
+cp .env.example .env  # fill in SSI + Supabase credentials
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+```
+
+**Important:** Use `--workers 1` only. All pipeline state is in-memory.
+
+### Key Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/v1/alerts/pipeline/status` | Pipeline health + rolling counters |
+| `GET /api/v1/alerts/pipeline/recent-notifications` | Recent alert notifications |
+| `GET /health` | Health check |
+
+### Environment Variables
+
+See [`apps/ai-service/.env.example`](apps/ai-service/.env.example) for full list. Key variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POLLING_ENABLED` | `true` | Enable SSI market polling |
+| `AI_EXPLAIN_MODE` | `template_only` | `template_only` or `template_llm` |
+| `ALERT_WARMUP_SECONDS` | `180` | Suppress alerts after restart |
+| `ALERT_COOLDOWN_CACHE_PATH` | `data/cooldown_cache.json` | Cooldown persistence file |
+
+### Running Tests
+
+```bash
+# E2E synthetic pipeline test (no external deps needed)
+python scripts/test_e2e_pipeline_synthetic.py
+```
+
+See [docs/STAGING_RUNBOOK.md](docs/STAGING_RUNBOOK.md) for staging deployment guide.
+
+---
+
 ## Tech Stack
 
 ### Frontend

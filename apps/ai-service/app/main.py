@@ -42,7 +42,7 @@ alert_evaluator = get_alert_evaluator(
     cooldown_cache_path=settings.ALERT_COOLDOWN_CACHE_PATH,
 )
 
-ai_explain = get_ai_explain_service()
+ai_explain = get_ai_explain_service()  # LLM only used when AI_EXPLAIN_MODE=template_llm + key present
 
 # Wire insight engine → alert evaluator
 insight_engine.subscribe(alert_evaluator.evaluate)
