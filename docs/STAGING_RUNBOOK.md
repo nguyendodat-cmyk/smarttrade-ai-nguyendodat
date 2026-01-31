@@ -15,6 +15,7 @@ POLLING_BATCH_SIZE=20
 AI_EXPLAIN_MODE=template_only
 ALERT_WARMUP_SECONDS=180
 ALERT_COOLDOWN_CACHE_PATH=data/cooldown_cache.json
+DEBUG_ENDPOINTS_ENABLED=false
 ```
 
 **Important:**
@@ -66,7 +67,22 @@ On restart:
 2. Warm-up suppresses all alerts for first 180s (configurable)
 3. State (bars) rebuilds from next polling cycle
 
-## 5. Known Limitations
+## 5. Debug Endpoints
+
+Debug endpoints are **disabled by default** for safety.
+
+To enable (for QA/ops troubleshooting only):
+
+```env
+DEBUG_ENDPOINTS_ENABLED=true
+```
+
+When enabled:
+- `GET /api/v1/debug/market_state` — shows bar counts and indicator readiness per symbol
+
+When disabled (default): these endpoints return 404.
+
+## 6. Known Limitations
 
 - **Single worker only**: Do not use `--workers > 1`
 - **RSI uses SMA** (not Wilder's EMA) — minor numerical difference

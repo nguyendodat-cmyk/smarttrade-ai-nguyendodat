@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     # AI Explain (Sprint B.2)
     AI_EXPLAIN_MODE: str = "template_only"  # "template_only" | "template_llm"
 
+    # Debug endpoints (disabled by default for safety)
+    DEBUG_ENDPOINTS_ENABLED: bool = False
+
     class Config:
         env_file = ".env"
         case_sensitive = True
