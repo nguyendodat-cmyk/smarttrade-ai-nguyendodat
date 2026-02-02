@@ -7,6 +7,7 @@ from app.config import settings
 from app.routers import ai_router, hybrid_ai_router, analytics_router, research_router, alerts_router, debug_router
 from app.services.market_state_manager import MarketStateManager
 from app.services.market_polling_service import MarketPollingService
+from app.services.ssi_client import SSIClient
 from app.services.insight_engine import InsightEngine
 from app.services.alert_evaluator import get_alert_evaluator
 from app.services.ai_explain_service import get_ai_explain_service
@@ -27,7 +28,20 @@ insight_engine = InsightEngine(
     enabled=settings.INSIGHT_ENGINE_ENABLED,
 )
 
+# SSI FastConnect client (None if credentials not configured)
+ssi_client = None
+if settings.SSI_CONSUMER_ID and settings.SSI_CONSUMER_SECRET:
+    ssi_client = SSIClient(
+        base_url=settings.SSI_BASE_URL,
+        consumer_id=settings.SSI_CONSUMER_ID,
+        consumer_secret=settings.SSI_CONSUMER_SECRET,
+    )
+    logger.info("SSI client configured: base_url=%s", settings.SSI_BASE_URL)
+else:
+    logger.warning("SSI credentials not set — polling will return empty bars (synthetic/demo only)")
+
 polling_service = MarketPollingService(
+    ssi_client=ssi_client,
     interval_default=settings.POLLING_INTERVAL_DEFAULT,
     interval_watchlist=settings.POLLING_INTERVAL_WATCHLIST,
     interval_hot=settings.POLLING_INTERVAL_HOT,
@@ -82,6 +96,8 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down %s...", settings.APP_NAME)
     alert_evaluator.persist_cooldowns()
     await polling_service.stop()
+    if ssi_client:
+        await ssi_client.close()
 
 
 app = FastAPI(

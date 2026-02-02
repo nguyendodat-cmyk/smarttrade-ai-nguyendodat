@@ -189,18 +189,24 @@ class MarketPollingService:
             intraday = await self.ssi_client.get_intraday_ohlc(
                 symbol=symbol, resolution="1", count=60
             )
-            if intraday:
-                for bar_data in intraday:
-                    bars.append(PriceBar(
-                        symbol=symbol,
-                        timeframe=Timeframe.INTRADAY_1M,
-                        timestamp=bar_data["timestamp"],
-                        open=bar_data["open"],
-                        high=bar_data["high"],
-                        low=bar_data["low"],
-                        close=bar_data["close"],
-                        volume=bar_data.get("volume", 0),
-                    ))
+            logger.info(
+                "[POLL][%s] intraday: records=%d, ts_range=[%s → %s]",
+                symbol,
+                len(intraday),
+                intraday[0]["timestamp"].isoformat() if intraday else "N/A",
+                intraday[-1]["timestamp"].isoformat() if intraday else "N/A",
+            )
+            for bar_data in intraday:
+                bars.append(PriceBar(
+                    symbol=symbol,
+                    timeframe=Timeframe.INTRADAY_1M,
+                    timestamp=bar_data["timestamp"],
+                    open=bar_data["open"],
+                    high=bar_data["high"],
+                    low=bar_data["low"],
+                    close=bar_data["close"],
+                    volume=bar_data.get("volume", 0),
+                ))
         except Exception as e:
             logger.error("Error fetching intraday for %s: %s", symbol, e)
 
@@ -209,18 +215,24 @@ class MarketPollingService:
             daily = await self.ssi_client.get_daily_ohlc(
                 symbol=symbol, count=50
             )
-            if daily:
-                for bar_data in daily:
-                    bars.append(PriceBar(
-                        symbol=symbol,
-                        timeframe=Timeframe.DAILY,
-                        timestamp=bar_data["timestamp"],
-                        open=bar_data["open"],
-                        high=bar_data["high"],
-                        low=bar_data["low"],
-                        close=bar_data["close"],
-                        volume=bar_data.get("volume", 0),
-                    ))
+            logger.info(
+                "[POLL][%s] daily: records=%d, ts_range=[%s → %s]",
+                symbol,
+                len(daily),
+                daily[0]["timestamp"].isoformat() if daily else "N/A",
+                daily[-1]["timestamp"].isoformat() if daily else "N/A",
+            )
+            for bar_data in daily:
+                bars.append(PriceBar(
+                    symbol=symbol,
+                    timeframe=Timeframe.DAILY,
+                    timestamp=bar_data["timestamp"],
+                    open=bar_data["open"],
+                    high=bar_data["high"],
+                    low=bar_data["low"],
+                    close=bar_data["close"],
+                    volume=bar_data.get("volume", 0),
+                ))
         except Exception as e:
             logger.error("Error fetching daily for %s: %s", symbol, e)
 
